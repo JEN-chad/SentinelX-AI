@@ -166,6 +166,26 @@ class AuditLogRecord(Base):
     verification_hash = Column(String(128), nullable=False)
 
 
+class ExperimentRecord(Base):
+    __tablename__ = "experiments"
+
+    experiment_id = Column(String(64), primary_key=True, index=True)
+    name = Column(String(128), nullable=False)
+    dataset_id = Column(String(64), nullable=False, index=True)
+    model_name = Column(String(64), nullable=False, index=True)
+    policy_name = Column(String(64), nullable=False, index=True)
+    random_seed = Column(Integer, nullable=False, default=42)
+    hyperparameters = Column(JSON, nullable=False, default=dict)
+    mode = Column(String(32), nullable=False, default="training", index=True)
+    status = Column(String(32), nullable=False, default="completed", index=True)
+    metrics = Column(JSON, nullable=False, default=dict)
+    confusion_matrix = Column(JSON, nullable=True)
+    artifact_path = Column(String(256), nullable=True)
+    error_message = Column(String(1000), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 # Compound indices for common query patterns
 Index("idx_events_source_target_time", EventRecord.source_asset, EventRecord.target_asset, EventRecord.event_time)
 Index("idx_incidents_status_severity", IncidentRecord.status, IncidentRecord.severity)

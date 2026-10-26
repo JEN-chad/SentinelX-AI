@@ -11,16 +11,21 @@ from sqlalchemy.orm import Session
 from app.agents.base import BaseAgent
 from app.agents.detection_agent import DetectionAgent
 from app.agents.investigation_agent import InvestigationAgent
+from app.agents.mitigation_agent import MitigationPlanningAgent
+from app.agents.risk_agent import RiskAssessmentAgent
 from app.database.models import IncidentRecord
 from app.database.repositories.audit_repo import AuditRepository
 from app.database.repositories.event_repo import EventRepository
 from app.database.repositories.incident_repo import IncidentRepository
 from app.orchestration.state_machine import IncidentStateMachine
+from app.safety.approval import ApprovalRecord, ApprovalWorkflow
+from app.safety.policy_gate import DeterministicSafetyGate, SafetyResult
 from app.schemas.agents import AgentRunResult, AgentTask
-from app.schemas.common import ActionType, AgentName, AgentRunStatus, IncidentStatus, SeverityLevel
+from app.schemas.common import ActionType, AgentName, AgentRunStatus, ApprovalStatus, IncidentStatus, SeverityLevel
 from app.schemas.events import NormalizedEvent
 from app.schemas.incidents import IncidentState
 from app.services.incident_service import IncidentService
+from app.simulator.action_executor import SimulatedActionExecutor, SimulationOutcome
 
 logger = logging.getLogger("sentinelx.orchestrator")
 
@@ -33,11 +38,17 @@ class IncidentOrchestrator:
         db: Session,
         detection_agent: Optional[DetectionAgent] = None,
         investigation_agent: Optional[InvestigationAgent] = None,
+        risk_agent: Optional[RiskAssessmentAgent] = None,
+        mitigation_agent: Optional[MitigationPlanningAgent] = None,
+        simulator_executor: Optional[SimulatedActionExecutor] = None,
         candidate_threshold: float = 0.5,
     ):
         self.db = db
         self.detection_agent = detection_agent or DetectionAgent()
         self.investigation_agent = investigation_agent or InvestigationAgent()
+        self.risk_agent = risk_agent or RiskAssessmentAgent()
+        self.mitigation_agent = mitigation_agent or MitigationPlanningAgent()
+        self.simulator_executor = simulator_executor or SimulatedActionExecutor()
         self.candidate_threshold = candidate_threshold
         self.incident_service = IncidentService(db)
 
@@ -263,3 +274,189 @@ class IncidentOrchestrator:
             updated_inc = current_record
 
         return updated_inc, inv_result
+
+    def assess_incident_risk(self, incident_id: str) -> Tuple[IncidentRecord, AgentRunResult]:
+        """Dispatch Risk Assessment Agent (Phase 7) to compute multi-factor risk and attribute MITRE technique."""
+        incident = IncidentRepository.get_incident(self.db, incident_id)
+        if not incident:
+            raise ValueError(f"Incident '{incident_id}' not found.")
+
+        # Ensure incident is in RISK_ASSESSED state
+        if incident.status != IncidentStatus.RISK_ASSESSED.value:
+            if incident.status == IncidentStatus.SCORED.value:
+                # Run investigation first if not yet performed
+                incident, _ = self.investigate_incident(incident_id)
+            elif incident.status != IncidentStatus.RISK_ASSESSED.value:
+                pass  # allow re-evaluating risk if already beyond
+
+        now = datetime.now(timezone.utc)
+        task = AgentTask(
+            task_id=f"tsk-rsk-{now.strftime('%Y%m%d%H%M%S%f')[-8:]}",
+            incident_id=incident_id,
+            agent_name=AgentName.RISK_AGENT,
+            parameters={},
+            created_at=now,
+        )
+
+        # Context derivation from existing incident and linked events
+        seed_event_id = incident.event_links[0].event_id if incident.event_links else None
+        target_asset = incident.target_asset or "192.168.10.5"
+        predicted_class = incident.title.split()[0] if incident.title else "Threat"
+
+        risk_result = self.risk_agent.run(
+            task=task,
+            context={
+                "detection_score": incident.risk_score or 0.75,
+                "predicted_class": predicted_class,
+                "target_asset": target_asset,
+                "recurrence_count": len(incident.event_links),
+                "supporting_event_ids": [l.event_id for l in incident.event_links],
+            },
+        )
+
+        IncidentRepository.add_agent_result(self.db, risk_result)
+
+        new_risk_score = risk_result.structured_output["risk_score"]
+        new_severity = SeverityLevel(risk_result.structured_output["severity"])
+        mitre_tech = risk_result.structured_output.get("mitre_technique")
+
+        # Update MITRE technique on DB record
+        incident_rec = IncidentRepository.get_incident(self.db, incident_id)
+        if incident_rec:
+            incident_rec.mitre_technique = mitre_tech
+            incident_rec.target_asset = target_asset
+            self.db.commit()
+
+        # Transition: RISK_ASSESSED -> RESPONSE_PROPOSED
+        updated_inc = self.incident_service.transition_state(
+            incident_id=incident_id,
+            target_status=IncidentStatus.RESPONSE_PROPOSED,
+            risk_score=new_risk_score,
+            severity=new_severity,
+            actor="risk_agent",
+            reason=f"Risk assessed as {new_risk_score:.2f} ({new_severity.value.upper()}).",
+        )
+
+        return updated_inc, risk_result
+
+    def plan_mitigation(self, incident_id: str, is_human_approved: bool = False) -> Tuple[IncidentRecord, AgentRunResult]:
+        """Dispatch Mitigation Planning Agent (Phase 8) to propose allowlisted defensive actions."""
+        incident = IncidentRepository.get_incident(self.db, incident_id)
+        if not incident:
+            raise ValueError(f"Incident '{incident_id}' not found.")
+
+        # Ensure incident has had risk assessed
+        if incident.status in [IncidentStatus.SCORED.value, IncidentStatus.INVESTIGATING.value, IncidentStatus.RISK_ASSESSED.value]:
+            incident, _ = self.assess_incident_risk(incident_id)
+
+        now = datetime.now(timezone.utc)
+        task = AgentTask(
+            task_id=f"tsk-mit-{now.strftime('%Y%m%d%H%M%S%f')[-8:]}",
+            incident_id=incident_id,
+            agent_name=AgentName.MITIGATION_AGENT,
+            parameters={},
+            created_at=now,
+        )
+
+        mit_result = self.mitigation_agent.run(
+            task=task,
+            context={
+                "risk_score": incident.risk_score,
+                "target_asset": incident.target_asset or "192.168.10.5",
+                "is_human_approved": is_human_approved,
+                "supporting_event_ids": [l.event_id for l in incident.event_links],
+            },
+        )
+
+        IncidentRepository.add_agent_result(self.db, mit_result)
+
+        primary_action = mit_result.structured_output["recommended_action"]
+
+        # If primary action is simulate_block and not approved, advance to APPROVAL_REQUIRED
+        if primary_action == ActionType.SIMULATE_BLOCK.value and not is_human_approved:
+            target_status = IncidentStatus.APPROVAL_REQUIRED
+            reason = "Recommended simulate_block requires human security analyst approval."
+        else:
+            target_status = IncidentStatus.SIMULATING
+            reason = f"Response '{primary_action}' permitted under deterministic safety gate."
+
+        updated_inc = self.incident_service.transition_state(
+            incident_id=incident_id,
+            target_status=target_status,
+            actor="mitigation_agent",
+            reason=reason,
+        )
+
+        return updated_inc, mit_result
+
+    def record_approval(
+        self,
+        incident_id: str,
+        reviewer_id: str,
+        action: ActionType,
+        status: ApprovalStatus = ApprovalStatus.APPROVED,
+        comment: Optional[str] = None,
+    ) -> ApprovalRecord:
+        """Record human analyst approval decision and transition incident to SIMULATING or CLOSED."""
+        incident = IncidentRepository.get_incident(self.db, incident_id)
+        if not incident:
+            raise ValueError(f"Incident '{incident_id}' not found.")
+
+        approval = ApprovalWorkflow.create_approval(
+            incident_id=incident_id,
+            action=action,
+            reviewer_id=reviewer_id,
+            status=status,
+            comment=comment,
+        )
+
+        if status == ApprovalStatus.APPROVED:
+            self.incident_service.transition_state(
+                incident_id=incident_id,
+                target_status=IncidentStatus.SIMULATING,
+                actor=reviewer_id,
+                reason=f"Analyst approved action '{action.value}'. Note: {comment}",
+            )
+        else:
+            self.incident_service.transition_state(
+                incident_id=incident_id,
+                target_status=IncidentStatus.CLOSED,
+                actor=reviewer_id,
+                reason=f"Analyst rejected proposed action '{action.value}'.",
+            )
+
+        return approval
+
+    def execute_simulated_response(
+        self,
+        incident_id: str,
+        action: ActionType,
+    ) -> Tuple[IncidentRecord, SimulationOutcome]:
+        """Execute approved response strictly within simulated sandbox boundary."""
+        incident = IncidentRepository.get_incident(self.db, incident_id)
+        if not incident:
+            raise ValueError(f"Incident '{incident_id}' not found.")
+
+        target_asset = incident.target_asset or "192.168.10.5"
+
+        # Execute containment in virtual simulation state
+        outcome = self.simulator_executor.execute(
+            incident_id=incident_id,
+            action=action,
+            target_asset=target_asset,
+            is_attack=True,
+        )
+
+        # Transition incident: SIMULATING -> OUTCOME_RECORDED
+        updated_inc = self.incident_service.transition_state(
+            incident_id=incident_id,
+            target_status=IncidentStatus.OUTCOME_RECORDED,
+            actor="simulator_executor",
+            reason=(
+                f"Simulated action '{action.value}' completed. "
+                f"Containment: {outcome.containment_success}, Disruption: {outcome.operational_disruption_cost}, "
+                f"Reward: {outcome.reward}."
+            ),
+        )
+
+        return updated_inc, outcome

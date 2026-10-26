@@ -182,7 +182,7 @@ export function Header() {
           {/* Clock */}
           <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-400">
             <Clock className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{utcTime || "2026-10-14 04:12:00 UTC"}</span>
+            <span>{utcTime || "UTC"}</span>
           </div>
         </div>
       </div>

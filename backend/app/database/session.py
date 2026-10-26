@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from .base import Base
+from . import models  # Ensures all ORM tables are registered with Base.metadata
 
 logger = logging.getLogger("sentinelx.database")
 
@@ -18,18 +19,24 @@ logger = logging.getLogger("sentinelx.database")
 def create_app_engine(database_url: str):
     """Create a resilient SQLAlchemy engine with SQLite test fallback."""
     is_sqlite = database_url.startswith("sqlite")
-    connect_args = {"check_same_thread": False} if is_sqlite else {}
+    engine_kwargs: Dict[str, Any] = {
+        "echo": False,
+        "future": True,
+    }
+
+    if is_sqlite:
+        engine_kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Optimizations for Neon Cloud Serverless PostgreSQL
+        engine_kwargs["pool_pre_ping"] = True
+        engine_kwargs["pool_recycle"] = 300
 
     try:
-        engine = create_engine(
-            database_url,
-            connect_args=connect_args,
-            echo=False,
-            future=True,
-        )
+        engine = create_engine(database_url, **engine_kwargs)
         # Verify connection
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
+        logger.info(f"Connected successfully to primary database at '{engine.url.host or 'local'}'.")
         return engine
     except Exception as e:
         logger.warning(

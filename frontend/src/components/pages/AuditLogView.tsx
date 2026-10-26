@@ -104,11 +104,13 @@ export function AuditLogView() {
             className="bg-[#070d18] border border-slate-700 rounded px-2.5 py-1 text-slate-200 focus:outline-none"
           >
             <option value="all">All Actors</option>
-            <option value="safety_gate">Safety Gate</option>
+            <option value="orchestrator">Orchestrator</option>
+            <option value="detection_agent">Detection Agent</option>
+            <option value="investigation_agent">Investigation Agent</option>
+            <option value="risk_agent">Risk Agent</option>
             <option value="mitigation_agent">Mitigation Agent</option>
-            <option value="simulation_engine">Simulation Engine</option>
-            <option value="human_analyst">Human Analyst</option>
-            <option value="ingestion_service">Ingestion Service</option>
+            <option value="simulator_executor">Simulator Executor</option>
+            <option value="security_analyst">Security Analyst</option>
           </select>
         </div>
       </div>
@@ -116,7 +118,12 @@ export function AuditLogView() {
       {/* Audit Log Entries List */}
       <div className="rounded-xl bg-[#0b1220] border border-slate-800 shadow-xl overflow-hidden font-mono text-xs">
         <div className="divide-y divide-slate-800/80 bg-[#090f1c]">
-          {filteredLogs.map((log) => (
+          {filteredLogs.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              No audit log entries found in the database. Run replay and agent actions to generate cryptographically signed audit records.
+            </div>
+          ) : (
+            filteredLogs.map((log) => (
             <div key={log.audit_id} className="p-4 hover:bg-slate-800/30 transition-colors space-y-2">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -156,7 +163,7 @@ export function AuditLogView() {
                 </span>
               </div>
             </div>
-          ))}
+          ))) }
         </div>
       </div>
     </div>

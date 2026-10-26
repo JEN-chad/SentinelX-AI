@@ -4,8 +4,8 @@ Enforces global safety constraints including mandatory simulation-only execution
 """
 
 from enum import Enum
-from typing import Literal
-from pydantic import Field, field_validator
+from typing import Literal, Optional
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,10 +50,20 @@ class Settings(BaseSettings):
         default="postgresql://sentinelx:sentinelx@localhost:5432/sentinelx_db",
         alias="DATABASE_URL"
     )
+    neon_db_url: Optional[str] = Field(default=None, alias="NEON_DB_URL")
     secret_key: str = Field(
         default="sentinelx-dev-secret-key-replace-in-production",
         alias="SECRET_KEY"
     )
+
+    @model_validator(mode="after")
+    def resolve_neon_database_url(self) -> "Settings":
+        """Prioritize cloud Neon PostgreSQL URL if present."""
+        if self.neon_db_url:
+            # If database_url is the local default or not set, use Neon
+            if not self.database_url or "localhost:5432" in self.database_url:
+                self.database_url = self.neon_db_url
+        return self
 
     @field_validator("execution_mode")
     @classmethod

@@ -16,7 +16,7 @@ import { useSimulation } from "@/lib/simulationStore";
 import { NormalizedEvent } from "@/lib/types";
 
 export function EventExplorerView() {
-  const { events, setInspectedEvent, isStreaming, toggleStreaming } = useSimulation();
+  const { events, setInspectedEvent, isStreaming, toggleStreaming, triggerReplay } = useSimulation();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -66,10 +66,16 @@ export function EventExplorerView() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => triggerReplay(25)}
+            className="px-3 py-1.5 rounded bg-emerald-950 border border-emerald-800 text-xs font-mono text-emerald-300 hover:bg-emerald-900"
+          >
+            Replay 25 Flows
+          </button>
+          <button
             onClick={toggleStreaming}
             className="px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs font-mono text-slate-300 hover:text-white"
           >
-            {isStreaming ? "Pause Ingest" : "Resume Ingest"}
+            {isStreaming ? "Pause Sync" : "Resume Sync"}
           </button>
         </div>
       </div>
