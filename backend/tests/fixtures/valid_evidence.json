@@ -1,0 +1,15 @@
+{
+  "evidence_id": "evd-demo-0001",
+  "event_id": "evt-demo-0001",
+  "supporting_event_ids": ["evt-demo-0001"],
+  "evidence_type": "anomaly_signal",
+  "is_inferred": false,
+  "description": "High SYN flag frequency detected during short flow window from 192.168.1.105",
+  "confidence": 0.92,
+  "source_component": "detection_service",
+  "metadata": {
+    "syn_flag_count": 1,
+    "flow_bytes_per_sec": 1284.2
+  },
+  "timestamp": "2026-10-14T08:00:02Z"
+}

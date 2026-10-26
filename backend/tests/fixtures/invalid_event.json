@@ -1,0 +1,10 @@
+{
+  "event_id": "invalid id with spaces & symbols!",
+  "event_time": "2026-10-14 08:00:00",
+  "ingested_at": "not-a-timestamp",
+  "source": "x",
+  "source_asset": "",
+  "target_asset": "server-1",
+  "event_type": "syn_flood",
+  "features": {}
+}

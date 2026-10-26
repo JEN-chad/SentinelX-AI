@@ -1,0 +1,36 @@
+{
+  "incident_id": "inc-demo-0001",
+  "title": "Suspected SYN Flood Denial of Service Probe",
+  "status": "investigating",
+  "severity": "high",
+  "risk_score": 0.84,
+  "event_ids": [
+    "evt-demo-0001"
+  ],
+  "evidence": [
+    {
+      "evidence_id": "evd-demo-0001",
+      "event_id": "evt-demo-0001",
+      "supporting_event_ids": ["evt-demo-0001"],
+      "evidence_type": "anomaly_signal",
+      "is_inferred": false,
+      "description": "High SYN flag frequency detected during short flow window from 192.168.1.105",
+      "confidence": 0.92,
+      "source_component": "detection_service",
+      "metadata": {
+        "syn_flag_count": 1
+      },
+      "timestamp": "2026-10-14T08:00:02Z"
+    }
+  ],
+  "agent_results": [],
+  "allowed_actions": [
+    "raise_alert",
+    "increase_monitoring",
+    "escalate_for_approval",
+    "simulate_block"
+  ],
+  "created_at": "2026-10-14T08:00:03Z",
+  "updated_at": "2026-10-14T08:00:05Z",
+  "schema_version": "v1"
+}

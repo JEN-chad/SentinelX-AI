@@ -1,0 +1,18 @@
+{
+  "detection_id": "det-demo-0001",
+  "event_id": "evt-demo-0001",
+  "predicted_class": "suspicious",
+  "class_scores": {
+    "benign": 0.08,
+    "suspicious": 0.92
+  },
+  "anomaly_score": 0.85,
+  "model_version": "rf-baseline-v1.0",
+  "evidence_feature_names": [
+    "flow_bytes_per_sec",
+    "syn_flag_count"
+  ],
+  "inference_duration_ms": 1.45,
+  "calibrated": false,
+  "created_at": "2026-10-14T08:00:02Z"
+}

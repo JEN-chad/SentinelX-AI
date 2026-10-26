@@ -1,0 +1,21 @@
+{
+  "event_id": "evt-demo-0001",
+  "event_time": "2026-10-14T08:00:00Z",
+  "ingested_at": "2026-10-14T08:00:01Z",
+  "source": "dataset_replay",
+  "source_asset": "192.168.1.105",
+  "target_asset": "192.168.1.1",
+  "event_type": "syn_flood_probe",
+  "features": {
+    "flow_duration": 120500,
+    "total_fwd_packets": 45,
+    "total_bwd_packets": 2,
+    "fwd_packet_length_mean": 64.5,
+    "flow_bytes_per_sec": 1284.2,
+    "syn_flag_count": 1
+  },
+  "dataset_id": "cic-ids2017-sample",
+  "run_id": "run-replay-001",
+  "raw_label": "DoS-Slowloris",
+  "schema_version": "v1"
+}
